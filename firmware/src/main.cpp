@@ -76,6 +76,14 @@ void setup() {
 #ifndef RELEASE
   notecard.setDebugOutputStream(serial_debug);
 #endif
+
+  J *motionReq = notecard.newRequest("card.motion.mode");
+  if (motionReq != NULL) {
+    JAddBoolToObject(motionReq, "start", true);
+    JAddNumberToObject(motionReq, "seconds", 60);
+    JAddNumberToObject(motionReq, "motion", 10);
+    notecard.sendRequest(motionReq);
+  }
 }
 
 void loop() {
@@ -88,6 +96,30 @@ void loop() {
       delay(30000);
       return;
     }
+  }
+
+  J *motionReq = notecard.newRequest("card.motion");
+  bool isMoving = false;
+  if (motionReq != NULL) {
+    J *motionRsp = notecard.requestAndResponse(motionReq);
+    if (motionRsp != NULL) {
+      const char *mode = JGetString(motionRsp, "mode");
+#ifndef RELEASE
+      serial_debug.print(F("Motion status: "));
+      serial_debug.println(mode);
+#endif
+
+      isMoving = (strcmp(mode, "moving") == 0);
+      notecard.deleteResponse(motionRsp);
+    }
+  }
+
+  if (!isMoving) {
+#ifndef RELEASE
+    serial_debug.println(F("Device not moving, skipping temperature check"));
+#endif
+    delay(30000);
+    return;
   }
 
   float temperature = bme.readTemperature();
@@ -114,7 +146,7 @@ void loop() {
     if (req != NULL) {
       JAddStringToObject(req, "file", ALERT_NOTEFILE);
       JAddBoolToObject(req, "sync", true);
-      
+
       J *body = JCreateObject();
       if (body != NULL) {
         JAddNumberToObject(body, "temp", temperature);
@@ -122,10 +154,11 @@ void loop() {
         JAddNumberToObject(body, "temp_max", temp_max);
         JAddItemToObject(req, "body", body);
       }
-      
+
       notecard.sendRequest(req);
     }
   }
-  
+
+  // TODO: this should be an env var?
   delay(300000); // 5 minutes
 }
