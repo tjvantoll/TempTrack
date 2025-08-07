@@ -109,7 +109,7 @@ void loop() {
       serial_debug.println(mode);
 #endif
 
-      isMoving = (strcmp(mode, "moving") == 0);
+      isMoving = (mode && strcmp(mode, "moving") == 0);
       notecard.deleteResponse(motionRsp);
     }
   }
