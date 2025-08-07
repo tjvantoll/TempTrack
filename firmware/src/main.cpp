@@ -11,8 +11,14 @@
 #define SERIAL_BAUD 115200
 HardwareSerial serial_debug(PIN_VCP_RX, PIN_VCP_TX);
 
-const int DEFAULT_TEMP_MIN = 0;
-const int DEFAULT_TEMP_MAX = 100;
+// Large default thresholds. Don't want to trigger alerts unless
+// environment variables are set.
+#define DEFAULT_TEMP_MIN -999
+#define DEFAULT_TEMP_MAX 999
+
+#define SENSOR_ERROR_RETRY_INTERVAL_MS (30 * 1000) // 30 seconds
+#define NO_MOTION_RETRY_INTERVAL_MS (60 * 1000) // 60 seconds
+#define ALERT_RECHECK_INTERVAL_MS (10 * 60 * 1000) // 10 minutes
 
 // Uncomment the following line to disable all logging output
 // #define RELEASE
@@ -93,7 +99,7 @@ void loop() {
 #ifndef RELEASE
       serial_debug.println(F("BME280 initialization failed, skipping temperature check"));
 #endif
-      delay(30000);
+      delay(SENSOR_ERROR_RETRY_INTERVAL_MS);
       return;
     }
   }
@@ -118,7 +124,7 @@ void loop() {
 #ifndef RELEASE
     serial_debug.println(F("Device not moving, skipping temperature check"));
 #endif
-    delay(30000);
+    delay(NO_MOTION_RETRY_INTERVAL_MS);
     return;
   }
 
@@ -159,6 +165,5 @@ void loop() {
     }
   }
 
-  // TODO: this should be an env var?
-  delay(300000); // 5 minutes
+  delay(ALERT_RECHECK_INTERVAL_MS);
 }
