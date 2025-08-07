@@ -1,0 +1,42 @@
+[
+  {
+    "req": "card.voltage",
+    "mode": "lipo"
+  },
+  {
+    "req": "hub.set",
+    "product": "com.blues.tvantoll:temptrack",
+    "mode": "periodic",
+    "voutbound": "usb:30;high:60;normal:180;low:1440;dead:0",
+    "vinbound": "usb:30;high:720;normal:1440;low:1440;dead:0"
+  },
+  {
+    "req": "card.location.mode",
+    "mode": "periodic",
+    "seconds": 300
+  },
+  {
+    "req": "card.location.track",
+    "start": true,
+    "heartbeat": true,
+    "hours": 24
+  },
+  {
+    "req": "card.dfu",
+    "name": "stm32"
+  },
+  {
+    "req": "note.template",
+    "file": "alert.qo",
+    "body": {
+      "temp": 14.1,
+      "temp_min": 14.1,
+      "temp_max": 14.1
+    }
+  },
+  {
+    "req": "card.wifi",
+    "file": "Izzinet",
+    "password": "..."
+  }
+]
