@@ -45,6 +45,7 @@ bool initializeBME280() {
 }
 
 int getEnvVarIntValue(char *varName, int defaultValue) {
+  int result = defaultValue;
   J *envReq = notecard.newRequest("env.get");
   if (envReq != NULL) {
     JAddStringToObject(envReq, "name", varName);
@@ -60,14 +61,14 @@ int getEnvVarIntValue(char *varName, int defaultValue) {
           serialDebug.print(F(" with value: "));
           serialDebug.println(intervalMins);
 #endif
-          return intervalMins;
+          result = intervalMins;
         }
       }
     
       notecard.deleteResponse(envRsp);
     }
   }
-  return defaultValue;
+  return result;
 }
 
 void setup() {
