@@ -194,23 +194,26 @@ void loop() {
 
       notecard.sendRequest(req);
     }
+
+    int alertRecheckInterval = getEnvVarIntValue((char*)ALERT_RECHECK_ENV_VAR, DEFAULT_ALERT_RECHECK_INTERVAL_MIN);
+
+  #ifndef RELEASE
+    serialDebug.println(F("Alert sent. Rechecking in "));
+    serialDebug.print(alertRecheckInterval);
+    serialDebug.print(F(" minutes."));
+  #endif
+
+    // In this condition we sleep for the specified interval and do _not_ wake
+    // on motion, as there’s no need to check the temperature until the interval
+    // has passed. Notecard will still track in the meantime.
+    J *attnReq = notecard.newCommand("card.attn");
+    if (attnReq != NULL) {
+      JAddStringToObject(attnReq, "mode", "sleep");
+      JAddNumberToObject(attnReq, "seconds", alertRecheckInterval * 60);
+      notecard.sendRequest(attnReq);
+    }
   }
 
-  int alertRecheckInterval = getEnvVarIntValue((char*)ALERT_RECHECK_ENV_VAR, DEFAULT_ALERT_RECHECK_INTERVAL_MIN);
-
-#ifndef RELEASE
-  serialDebug.println(F("Alert sent. Rechecking in "));
-  serialDebug.print(alertRecheckInterval);
-  serialDebug.print(F(" minutes."));
-#endif
-
-  // In this condition we sleep for the specified interval and do _not_ wake
-  // on motion, as there’s no need to check the temperature until the interval
-  // has passed. Notecard will still track in the meantime.
-  J *attnReq = notecard.newCommand("card.attn");
-  if (attnReq != NULL) {
-    JAddStringToObject(attnReq, "mode", "sleep");
-    JAddNumberToObject(attnReq, "seconds", alertRecheckInterval * 60);
-    notecard.sendRequest(attnReq);
-  }
+  // Temperature in range. Wait one minute before checking again.
+  delay(60000);
 }
