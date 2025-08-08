@@ -2,6 +2,7 @@
 #include <Notecard.h>
 #include <Wire.h>
 #include <Adafruit_BME280.h>
+#include "version.h"
 
 // Project configuration
 #define PRODUCT_UID "com.blues.tvantoll:temptrack"
@@ -89,6 +90,12 @@ void setup() {
 #ifndef RELEASE
   notecard.setDebugOutputStream(serialDebug);
 #endif
+
+  J *dfuReq = notecard.newRequest("dfu.status");
+  if (dfuReq != NULL) {
+    JAddStringToObject(dfuReq, "version", firmwareVersion());
+    notecard.sendRequest(dfuReq);
+  }
 
   int seconds = getEnvVarIntValue((char*)CARD_MOTION_SECONDS_ENV_VAR, DEFAULT_CARD_MOTION_SECONDS);
   int motion = getEnvVarIntValue((char*)CARD_MOTION_MOTION_ENV_VAR, DEFAULT_CARD_MOTION_MOTION);
@@ -190,5 +197,20 @@ void loop() {
   }
 
   int alertRecheckInterval = getEnvVarIntValue((char*)ALERT_RECHECK_ENV_VAR, DEFAULT_ALERT_RECHECK_INTERVAL_MIN);
-  delay(alertRecheckInterval * 60 * 1000);
+
+#ifndef RELEASE
+  serialDebug.println(F("Alert sent. Rechecking in "));
+  serialDebug.print(alertRecheckInterval);
+  serialDebug.print(F(" minutes."));
+#endif
+
+  // In this condition we sleep for the specified interval and do _not_ wake
+  // on motion, as there’s no need to check the temperature until the interval
+  // has passed.
+  J *attnReq = notecard.newCommand("card.attn");
+  if (attnReq != NULL) {
+    JAddStringToObject(attnReq, "mode", "sleep");
+    JAddNumberToObject(attnReq, "seconds", alertRecheckInterval * 60);
+    notecard.sendRequest(attnReq);
+  }
 }
