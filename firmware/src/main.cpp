@@ -5,7 +5,6 @@
 #include "version.h"
 
 // Project configuration
-#define PRODUCT_UID "com.blues.tvantoll:temptrack"
 #define ALERT_NOTEFILE "alert.qo"
 #define TEMP_MIN_ENV_VAR "alert_temp_min_c"
 #define TEMP_MAX_ENV_VAR "alert_temp_max_c"
