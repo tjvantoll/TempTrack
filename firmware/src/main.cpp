@@ -206,7 +206,7 @@ void loop() {
 
   // In this condition we sleep for the specified interval and do _not_ wake
   // on motion, as there’s no need to check the temperature until the interval
-  // has passed.
+  // has passed. Notecard will still track in the meantime.
   J *attnReq = notecard.newCommand("card.attn");
   if (attnReq != NULL) {
     JAddStringToObject(attnReq, "mode", "sleep");
