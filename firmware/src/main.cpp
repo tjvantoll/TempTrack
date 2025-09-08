@@ -2,10 +2,9 @@
 #include <Notecard.h>
 #include <Wire.h>
 #include <Adafruit_BME280.h>
-#include "version.h"
+#include "config.h"
 
 // Project configuration
-#define ALERT_NOTEFILE "alert.qo"
 #define TEMP_MIN_ENV_VAR "alert_temp_min_c"
 #define TEMP_MAX_ENV_VAR "alert_temp_max_c"
 #define ALERT_RECHECK_ENV_VAR "alert_recheck_interval_min"
@@ -91,21 +90,9 @@ void setup() {
   notecard.setDebugOutputStream(serialDebug);
 #endif
 
-  J *dfuReq = notecard.newRequest("dfu.status");
-  if (dfuReq != NULL) {
-    JAddStringToObject(dfuReq, "version", firmwareVersion());
-    notecard.sendRequest(dfuReq);
-  }
-
   int seconds = getEnvVarIntValue((char*)CARD_MOTION_SECONDS_ENV_VAR, DEFAULT_CARD_MOTION_SECONDS);
   int motion = getEnvVarIntValue((char*)CARD_MOTION_MOTION_ENV_VAR, DEFAULT_CARD_MOTION_MOTION);
-  J *motionReq = notecard.newRequest("card.motion.mode");
-  if (motionReq != NULL) {
-    JAddBoolToObject(motionReq, "start", true);
-    JAddNumberToObject(motionReq, "seconds", seconds);
-    JAddNumberToObject(motionReq, "motion", motion);
-    notecard.sendRequest(motionReq);
-  }
+  configureNotecard(notecard, seconds, motion);
 
 #ifndef RELEASE
   serialDebug.println(F("Initializing BME280 sensor..."));
