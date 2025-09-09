@@ -48,7 +48,7 @@ void configureNotecard(Notecard &notecard, int cardMotionSeconds, int cardMotion
     JAddStringToObject(noteTemplateReq, "file", ALERT_NOTEFILE);
     J *body = JCreateObject();
     if (body != NULL) {
-      JAddNumberToObject(body, "temp", 14.2);
+      JAddNumberToObject(body, "temp", 14.1);
       JAddNumberToObject(body, "temp_min", 14.1);
       JAddNumberToObject(body, "temp_max", 14.1);
       JAddItemToObject(noteTemplateReq, "body", body);

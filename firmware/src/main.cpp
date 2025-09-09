@@ -4,7 +4,6 @@
 #include <Adafruit_BME280.h>
 #include "config.h"
 
-// Project configuration
 #define TEMP_MIN_ENV_VAR "alert_temp_min_c"
 #define TEMP_MAX_ENV_VAR "alert_temp_max_c"
 #define ALERT_RECHECK_ENV_VAR "alert_recheck_interval_min"
