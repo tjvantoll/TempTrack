@@ -22,22 +22,15 @@ HardwareSerial serialDebug(PIN_VCP_RX, PIN_VCP_TX);
 
 #define SENSOR_ERROR_RETRY_INTERVAL_MS (5 * 1000) // 5 seconds
 
-// Uncomment the following line to disable all logging output
-// #define RELEASE
-
 Notecard notecard;
 Adafruit_BME280 bme;
 
 bool initializeBME280() {
   if (bme.begin(0x76) || bme.begin(0x77)) {
-#ifndef RELEASE
     serialDebug.println(F("BME280 sensor initialized successfully"));
-#endif
     return true;
   } else {
-#ifndef RELEASE
     serialDebug.println(F("Could not find BME280 sensor"));
-#endif
     return false;
   }
 }
@@ -53,12 +46,10 @@ int getEnvVarIntValue(char *varName, int defaultValue) {
         const char* intervalStr = JGetString(envRsp, "text");
         if (intervalStr != NULL) {
           int intervalMins = (int)atoi(intervalStr);
-#ifndef RELEASE
           serialDebug.print(F("\nFound environment variable: "));
           serialDebug.print(varName);
           serialDebug.print(F(" with value: "));
           serialDebug.println(intervalMins);
-#endif
           result = intervalMins;
         }
       }
@@ -70,8 +61,7 @@ int getEnvVarIntValue(char *varName, int defaultValue) {
 }
 
 void setup() {
-#ifndef RELEASE
-  // Turn on the Swan’s LED for debugging
+  // Turn on the Cygnet’s LED for debugging
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
 
@@ -81,36 +71,26 @@ void setup() {
   for (const size_t start_ms = millis(); !serialDebug && (millis() - start_ms) < usb_timeout_ms;);
   serialDebug.println(F("TempTrack startup"));
   serialDebug.println(F("Initializing Notecard..."));
-#endif
 
   notecard.begin();
-
-#ifndef RELEASE
   notecard.setDebugOutputStream(serialDebug);
-#endif
 
   int seconds = getEnvVarIntValue((char*)CARD_MOTION_SECONDS_ENV_VAR, DEFAULT_CARD_MOTION_SECONDS);
   int motion = getEnvVarIntValue((char*)CARD_MOTION_MOTION_ENV_VAR, DEFAULT_CARD_MOTION_MOTION);
   configureNotecard(notecard, seconds, motion);
 
-#ifndef RELEASE
   serialDebug.println(F("Initializing BME280 sensor..."));
-#endif
 
   bool bmeInitialized = false;
   while (!bmeInitialized) {
     bmeInitialized = initializeBME280();
     if (!bmeInitialized) {
-#ifndef RELEASE
       serialDebug.println(F("BME280 initialization failed, retrying..."));
-#endif
       delay(SENSOR_ERROR_RETRY_INTERVAL_MS);
     }
   }
 
-#ifndef RELEASE
   serialDebug.println(F("BME280 initialized successfully"));
-#endif
 }
 
 void loop() {
@@ -120,10 +100,8 @@ void loop() {
     J *motionRsp = notecard.requestAndResponse(motionReq);
     if (motionRsp != NULL) {
       const char *mode = JGetString(motionRsp, "mode");
-#ifndef RELEASE
       serialDebug.print(F("Motion status: "));
       serialDebug.println(mode);
-#endif
 
       isMoving = (mode && strcmp(mode, "moving") == 0);
       notecard.deleteResponse(motionRsp);
@@ -131,9 +109,7 @@ void loop() {
   }
 
   if (!isMoving) {
-#ifndef RELEASE
     serialDebug.println(F("Device not moving, skipping temperature check, sleeping..."));
-#endif
     J *attnReq = notecard.newCommand("card.attn");
     if (attnReq != NULL) {
       JAddStringToObject(attnReq, "mode", "arm,motionchange,sleep");
@@ -141,7 +117,7 @@ void loop() {
       notecard.sendRequest(attnReq);
     }
 
-    // We shouldn’t never get here, but just in case
+    // We shouldn’t ever get here, but just in case
     return;
   }
 
@@ -149,7 +125,6 @@ void loop() {
   int temp_min = getEnvVarIntValue((char*)TEMP_MIN_ENV_VAR, DEFAULT_TEMP_MIN);
   int temp_max = getEnvVarIntValue((char*)TEMP_MAX_ENV_VAR, DEFAULT_TEMP_MAX);
 
-#ifndef RELEASE
   serialDebug.print(F("\nTemperature: "));
   serialDebug.print(temperature);
   serialDebug.print(F("C"));
@@ -158,12 +133,9 @@ void loop() {
   serialDebug.print(F("C to "));
   serialDebug.print(temp_max);
   serialDebug.print(F("C"));
-#endif
 
   if (temperature > temp_max || temperature < temp_min) {
-#ifndef RELEASE
     serialDebug.println(F("\nTemperature threshold exceeded! Sending alert..."));
-#endif
 
     J *req = notecard.newRequest("note.add");
     if (req != NULL) {
@@ -183,11 +155,9 @@ void loop() {
 
     int alertRecheckInterval = getEnvVarIntValue((char*)ALERT_RECHECK_ENV_VAR, DEFAULT_ALERT_RECHECK_INTERVAL_MIN);
 
-  #ifndef RELEASE
     serialDebug.println(F("Alert sent. Rechecking in "));
     serialDebug.print(alertRecheckInterval);
     serialDebug.print(F(" minutes."));
-  #endif
 
     // In this condition we sleep for the specified interval and do _not_ wake
     // on motion, as there’s no need to check the temperature until the interval
@@ -200,6 +170,6 @@ void loop() {
     }
   }
 
-  // Temperature in range. Wait one minute before checking again.
+  serialDebug.println(F("\nTemperature in range. Waiting one minute before checking again."));
   delay(60000);
 }

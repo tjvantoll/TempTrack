@@ -11,8 +11,8 @@
 #define PRODUCT_DISPLAY_NAME  "TempTrack"
 #define PRODUCT_FIRMWARE_ID   "temptrack"
 #define PRODUCT_DESC          "Asset tracker w/temperature-based alerting"
-#define PRODUCT_MAJOR         0
-#define PRODUCT_MINOR         1
+#define PRODUCT_MAJOR         1
+#define PRODUCT_MINOR         0
 #define PRODUCT_PATCH         0
 #define PRODUCT_BUILD         0
 #define PRODUCT_BUILT         __DATE__ " " __TIME__

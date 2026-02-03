@@ -39,6 +39,7 @@ void configureNotecard(Notecard &notecard, int cardMotionSeconds, int cardMotion
 
   J *cardDfuReq = notecard.newRequest("card.dfu");
   if (cardDfuReq != NULL) {
+    JAddStringToObject(cardDfuReq, "mode", "altdfu");
     JAddStringToObject(cardDfuReq, "name", "stm32");
     notecard.sendRequest(cardDfuReq);
   }
