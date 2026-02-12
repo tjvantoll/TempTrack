@@ -1,6 +1,12 @@
 # TempTrack
 
-A smart connected tracker that sends temperature-based alerts. You can learn how to build this product yourself by watching the **Building a Connected Product with Notecard** YouTube series using the links below.
+A smart connected tracker that sends temperature-based alerts.
+
+![TempTrack logo](logo.png)
+
+## Videos
+
+You can learn how to build TempTrack yourself by watching the **Building a Connected Product with Notecard** YouTube series using the links below.
 
 - [Part 1—Connecting Hardware](https://www.youtube.com/watch?v=dbzncnJwadE)
 - [Part 2—Configuring Notecard](https://www.youtube.com/watch?v=RPH2FkGINWs)
