@@ -25,8 +25,12 @@ The TempTrack project uses the following hardware.
 
 ## Config
 
-This project’s Notecard configuration lives in the [config.json](config.json) file. Learn about this configuration in the [Configuring Notecard](https://www.youtube.com/watch?v=RPH2FkGINWs) video.
+This project’s Notecard configuration lives in the [temptrack.json](temptrack.json) file. Learn about this configuration in the [Configuring Notecard](https://www.youtube.com/watch?v=RPH2FkGINWs) video.
 
 ## Firmware
 
-This project’s host firmware lives in the [firmware](firmware) folder. Learn about this firmware and how to run it in the [Host Firmware]((https://www.youtube.com/watch?v=5fb_mx91nOs)) video.
+This project’s host firmware lives in the [firmware](firmware) folder. Learn about this firmware and how to run it in the [Host Firmware](https://www.youtube.com/watch?v=5fb_mx91nOs) video.
+
+## Web app
+
+This project’s web dashboard lives in the [webapp](webapp) folder. It maps where the tracker has been, charts the temperatures it reported, and lets you change its alert thresholds. See the [webapp README](webapp/README.md) for setup.
