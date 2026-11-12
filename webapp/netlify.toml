@@ -16,3 +16,8 @@
 [build.environment]
   # Next.js 16 needs Node 20.9 or newer.
   NODE_VERSION = "22"
+  # Turbopack's build cache records the environment it built with, so
+  # NOTEHUB_PAT ends up in its cache files. The cache is kept between builds
+  # but never deployed, so leave it out of Netlify's secrets scan; everything
+  # that is deployed is still scanned.
+  SECRETS_SCAN_OMIT_PATHS = ".netlify/.next/cache/**,.next/cache/**"
