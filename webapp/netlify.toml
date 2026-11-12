@@ -1,0 +1,10 @@
+# Netlify reads this from the base directory (webapp/, set in the Netlify UI),
+# so paths here are relative to webapp/. Next.js is detected and deployed with
+# Netlify's Next.js runtime. Settings here override the ones in the Netlify UI.
+[build]
+  command = "pnpm run build"
+  publish = ".next"
+
+[build.environment]
+  # Next.js 16 needs Node 20.9 or newer.
+  NODE_VERSION = "22"
