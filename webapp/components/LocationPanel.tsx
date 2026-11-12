@@ -4,7 +4,6 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Skeleton } from "@/components/Skeleton";
 import { formatDistance, pathLengthMeters } from "@/lib/track";
-import type { Unit } from "@/lib/temperature";
 import type { TrackPoint } from "@/lib/notehub";
 
 /**
@@ -24,7 +23,7 @@ const stamp = new Intl.DateTimeFormat(undefined, {
   minute: "2-digit",
 });
 
-export function LocationPanel({ points, unit }: { points: TrackPoint[]; unit: Unit }) {
+export function LocationPanel({ points }: { points: TrackPoint[] }) {
   const lastIndex = Math.max(points.length - 1, 0);
 
   /**
@@ -124,7 +123,6 @@ export function LocationPanel({ points, unit }: { points: TrackPoint[]; unit: Un
           visible={visible}
           selectedIndex={openIndex}
           onSelect={setSelected}
-          unit={unit}
         />
       </div>
 

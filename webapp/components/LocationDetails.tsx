@@ -1,6 +1,9 @@
+"use client";
+
 import { formatNumber, trackFieldDef, TRACK_DETAIL_KEYS } from "@/lib/fields";
 import { formatCoords } from "@/lib/track";
-import { formatTemp, type Unit } from "@/lib/temperature";
+import { formatTemp } from "@/lib/temperature";
+import { useUnit } from "@/lib/unit-preference";
 import type { TrackPoint } from "@/lib/notehub";
 
 /**
@@ -10,11 +13,9 @@ import type { TrackPoint } from "@/lib/notehub";
  */
 export function LocationDetails({
   point,
-  unit,
   compact = false,
 }: {
   point: TrackPoint | null;
-  unit: Unit;
   /**
    * Drop the per-field explanations. They are worth the room in a full-width
    * panel; inside a 300px map popup they wrap to four lines each and bury the
@@ -22,6 +23,7 @@ export function LocationDetails({
    */
   compact?: boolean;
 }) {
+  const unit = useUnit();
   if (!point) {
     return <p className="py-6 text-sm text-muted">No tracking event selected.</p>;
   }

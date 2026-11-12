@@ -1,8 +1,8 @@
 # TempTrack web dashboard
 
-A dashboard for the TempTrack tracker. It shows where the device has been, the
-temperatures it reported, and any temperature alerts it sent — and lets you
-change the settings it runs on.
+A dashboard for a fleet of TempTrack trackers. It shows where every device is,
+and for each one where it has been, the temperatures it reported, and any
+temperature alerts it sent — and lets you change the settings it runs on.
 
 ## Setup
 
@@ -23,8 +23,8 @@ change the settings it runs on.
 4. **Run it.**
 
    ```bash
-   npm install
-   npm run dev
+   pnpm install
+   pnpm dev
    ```
 
    Open <http://localhost:3000>.
@@ -35,15 +35,21 @@ change the settings it runs on.
 |---|---|---|
 | `NOTEHUB_PAT` | yes | Notehub personal access token, sent as a bearer token |
 | `NOTEHUB_PROJECT_UID` | yes | Project to read from, e.g. `app:…` |
-| `NOTEHUB_DEVICE_UID` | no | Pin the dashboard to one device instead of auto-selecting |
 
 The token is only ever read on the server, so it never reaches the browser.
 
-## The two pages
+## Pages
 
-**Dashboard** — the latest temperature, voltage and signal strength; a map of
-where the device has been, with a two-handle slider to narrow which tracking
-events it draws; recent temperature alerts; and connectivity history.
+**Fleet** (`/`) — every device in the project on one map and in one list, with
+its latest temperature, most recent alert and when it was last seen. Devices
+that alerted in the last 24 hours are marked in red. Select a device to open
+its pages.
 
-**Settings** — rename the device, set the high and low temperature thresholds,
-and choose how long the device waits after an alert before checking again.
+**Device dashboard** (`/devices/<uid>`) — the latest temperature, voltage and
+signal strength; a map of where the device has been, with a two-handle slider
+to narrow which tracking events it draws; recent temperature alerts; and
+connectivity history.
+
+**Device settings** (`/devices/<uid>/settings`) — rename the device, set the
+high and low temperature thresholds, and choose how long the device waits after
+an alert before checking again.

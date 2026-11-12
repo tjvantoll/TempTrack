@@ -1,33 +1,23 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
-import { useTransition } from "react";
-import { UNITS, unitLabel, type Unit } from "@/lib/temperature";
+import { UNITS, unitLabel } from "@/lib/temperature";
+import { setUnit, useUnit } from "@/lib/unit-preference";
 
 /**
- * Display units, in the URL alongside the range so a shared link shows the same
- * numbers the sender was reading.
+ * Display units. Remembered in this browser (see lib/unit-preference.ts) and
+ * applied instantly on the client — no navigation, no server round trip.
  *
  * This only changes what is rendered. Thresholds are always stored as whole
  * Celsius because that is all the firmware can read — see lib/temperature.ts.
  */
-export function UnitToggle({ value }: { value: Unit }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const [isPending, startTransition] = useTransition();
-
-  const select = (unit: Unit) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("unit", unit);
-    startTransition(() => router.push(`?${params.toString()}`, { scroll: false }));
-  };
+export function UnitToggle() {
+  const value = useUnit();
 
   return (
     <div
       role="group"
       aria-label="Temperature units"
-      data-pending={isPending ? "" : undefined}
-      className="inline-flex rounded-lg border border-line bg-surface-alt p-0.5 data-pending:opacity-60"
+      className="inline-flex rounded-lg border border-line bg-surface-alt p-0.5"
     >
       {UNITS.map((unit) => {
         const active = unit === value;
@@ -36,7 +26,7 @@ export function UnitToggle({ value }: { value: Unit }) {
             key={unit}
             type="button"
             aria-pressed={active}
-            onClick={() => select(unit)}
+            onClick={() => setUnit(unit)}
             className={[
               "rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors",
               active ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink",

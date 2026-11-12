@@ -16,7 +16,6 @@ import "leaflet/dist/leaflet.css";
 import { LocationDetails } from "@/components/LocationDetails";
 import { trackBounds, trail, type LatLng } from "@/lib/track";
 import { formatRelative } from "@/lib/time-ranges";
-import type { Unit } from "@/lib/temperature";
 import type { TrackPoint } from "@/lib/notehub";
 
 /**
@@ -177,7 +176,6 @@ export default function TrackMap({
   visible,
   selectedIndex,
   onSelect,
-  unit,
 }: {
   /** Every event in the window. Sets the initial viewport. */
   all: TrackPoint[];
@@ -186,7 +184,6 @@ export default function TrackMap({
   /** Index of the event whose popup is open, or null. */
   selectedIndex: number | null;
   onSelect: (index: number | null) => void;
-  unit: Unit;
 }) {
   const line = useMemo(() => trail(visible.map((entry) => entry.point)), [visible]);
   const icon = useMemo(() => newestIcon(), []);
@@ -207,8 +204,12 @@ export default function TrackMap({
       {line.length > 1 && (
         /* Geometry is colored through a class rather than pathOptions: Leaflet
            writes those onto the SVG as presentation attributes, where a
-           `var()` reference is not reliably resolved. */
-        <Polyline positions={line} pathOptions={{ className: "track-line", weight: 3 }} />
+           `var()` reference is not reliably resolved.
+
+           `className` has to be a prop of its own. react-leaflet hands
+           `pathOptions` to `setStyle`, which ignores class names, so one
+           placed there never reaches the SVG. */
+        <Polyline positions={line} className="track-line" pathOptions={{ weight: 3 }} />
       )}
 
       {visible.length > 1 && <DirectionArrows points={visible.map((entry) => entry.point)} />}
@@ -232,10 +233,8 @@ export default function TrackMap({
             key={`${entry.index}:${entry.index === selectedIndex}`}
             center={[entry.point.lat, entry.point.lon]}
             radius={entry.index === selectedIndex ? 6 : 4}
-            pathOptions={{
-              className: entry.index === selectedIndex ? "track-event-selected" : "track-event",
-              weight: entry.index === selectedIndex ? 2 : 1.5,
-            }}
+            className={entry.index === selectedIndex ? "track-event-selected" : "track-event"}
+            pathOptions={{ weight: entry.index === selectedIndex ? 2 : 1.5 }}
             eventHandlers={{ click: () => onSelect(entry.index) }}
           />
         ),
@@ -278,7 +277,7 @@ export default function TrackMap({
             </time>
           </div>
           <p className="mb-2 text-xs text-muted">{formatRelative(selected.point.t)}</p>
-          <LocationDetails point={selected.point} unit={unit} compact />
+          <LocationDetails point={selected.point} compact />
         </Popup>
       )}
 

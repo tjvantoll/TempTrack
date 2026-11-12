@@ -1,9 +1,8 @@
 import { Card } from "@/components/Card";
 import { DeviceInfo } from "@/components/DeviceInfo";
-import { DeviceSettingsForm, type InitialSettings } from "@/components/DeviceSettingsForm";
-import { DeviceSwitcher } from "@/components/DeviceSwitcher";
-import { ErrorNotice, SetupNotice } from "@/components/ErrorNotice";
-import { UnitToggle } from "@/components/UnitToggle";
+import { DeviceSettings } from "@/components/DeviceSettings";
+import type { StoredSettings } from "@/components/DeviceSettingsForm";
+import { ErrorNotice } from "@/components/ErrorNotice";
 import {
   ALERT_RECHECK_DEFAULT,
   ALERT_RECHECK_VAR,
@@ -15,13 +14,8 @@ import {
   TEMP_MIN_DISABLED,
   TEMP_MIN_VAR,
 } from "@/lib/env-vars";
-import {
-  NotehubApiError,
-  NotehubConfigError,
-  getEnvironmentVariables,
-  resolveDevice,
-} from "@/lib/notehub";
-import { resolveUnit, thresholdInputValue } from "@/lib/temperature";
+import { decodeDeviceParam } from "@/lib/device-url";
+import { NotehubApiError, findDevice, getEnvironmentVariables } from "@/lib/notehub";
 
 export const dynamic = "force-dynamic";
 
@@ -38,37 +32,15 @@ function storedInt(variables: Record<string, string>, name: string, fallback: nu
   return Number.isFinite(value) ? value : fallback;
 }
 
-export default async function SettingsPage({ searchParams }: PageProps<"/settings">) {
-  const params = await searchParams;
-  const unit = resolveUnit(params.unit);
-  const requestedDevice = Array.isArray(params.device) ? params.device[0] : params.device;
+export default async function SettingsPage({
+  params,
+}: PageProps<"/devices/[uid]/settings">) {
+  const { uid } = await params;
 
-  let resolved: Awaited<ReturnType<typeof resolveDevice>> = null;
-  let failure: Error | null = null;
-  try {
-    resolved = await resolveDevice(requestedDevice);
-  } catch (error) {
-    if (error instanceof NotehubConfigError || error instanceof NotehubApiError) {
-      failure = error;
-    } else {
-      throw error;
-    }
-  }
-
-  if (failure instanceof NotehubConfigError) return <SetupNotice message={failure.message} />;
-  if (failure) return <ErrorNotice title="Could not reach Notehub" message={failure.message} />;
-
-  if (!resolved) {
-    return (
-      <ErrorNotice
-        title="No devices in this project"
-        message="Notehub returned no devices for this project UID."
-        hint="Check that NOTEHUB_PROJECT_UID points at the project your TempTrack device reports into."
-      />
-    );
-  }
-
-  const { device, all } = resolved;
+  // Resolved (with errors and not-found handled) by the layout; request-cached.
+  const resolved = await findDevice(decodeDeviceParam(uid)).catch(() => null);
+  if (!resolved) return null;
+  const { device } = resolved;
 
   let variables: Record<string, string>;
   try {
@@ -85,42 +57,20 @@ export default async function SettingsPage({ searchParams }: PageProps<"/setting
   const minEnabled = minC !== TEMP_MIN_DISABLED;
   const maxEnabled = maxC !== TEMP_MAX_DISABLED;
 
-  const initial: InitialSettings = {
+  const stored: StoredSettings = {
     name: variables[DEVICE_NAME_VAR] ?? device.serialNumber ?? "",
-    minEnabled,
-    maxEnabled,
-    // A disabled bound has no temperature to show. Leaving it blank rather than
-    // rendering the sentinel keeps -999 out of the interface entirely.
-    minValue: minEnabled ? thresholdInputValue(minC, unit) : "",
-    maxValue: maxEnabled ? thresholdInputValue(maxC, unit) : "",
+    minC: minEnabled ? minC : null,
+    maxC: maxEnabled ? maxC : null,
     recheck: String(storedInt(variables, ALERT_RECHECK_VAR, ALERT_RECHECK_DEFAULT)),
   };
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-ink">Settings</h1>
-          <p className="text-sm text-muted">
-            {device.serialNumber || device.bestId || device.uid}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <UnitToggle value={unit} />
-          <DeviceSwitcher devices={all} selected={device.uid} />
-        </div>
-      </div>
 
       <Card title="Device settings">
-        {/* The form is keyed on the device and the unit so switching either
-            re-seeds it from scratch. Without this, editing one device and then
-            switching would carry the first device's unsaved values across. */}
-        <DeviceSettingsForm
-          key={`${device.uid}:${unit}`}
-          deviceUid={device.uid}
-          unit={unit}
-          initial={initial}
-        />
+        {/* Keyed on the device so switching devices re-seeds the form from
+            scratch, rather than carrying one device's unsaved edits to the next. */}
+        <DeviceSettings key={device.uid} deviceUid={device.uid} stored={stored} />
       </Card>
 
       <Card title="Device information">

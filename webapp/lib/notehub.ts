@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import * as NotehubJs from "@blues-inc/notehub-js";
 import type { Point } from "./series";
 
@@ -75,7 +76,10 @@ type SdkError = { status?: number; response?: { body?: { message?: string } }; m
 type DevicesResponse = { devices?: RawDevice[]; has_more?: boolean };
 type EventsResponse = { events?: RawEvent[]; has_more?: boolean; through?: string };
 type LatestEventsResponse = { latest_events?: RawEvent[] };
-type EnvVarsResponse = { environment_variables?: Record<string, unknown> };
+type EnvVarsResponse = {
+  environment_variables?: Record<string, unknown>;
+  environment_variables_effective?: Record<string, unknown>;
+};
 
 async function call<T>(what: string, fn: () => Promise<T>): Promise<T> {
   try {
@@ -121,6 +125,11 @@ export type DeviceSummary = {
   voltage: number | null;
   temperature: number | null;
   location: string | null;
+  /** Notehub's best known position for the device, or null if it has none. */
+  lat: number | null;
+  lon: number | null;
+  /** When that position was taken, as an ISO timestamp. */
+  locationWhen: string | null;
   disabled: boolean;
   provisioned: string | null;
   fleetUids: string[];
@@ -164,14 +173,32 @@ function toDeviceSummary(device: RawDevice): DeviceSummary {
     }
     return null;
   };
+  const LOCATION_KEYS = ["best_location", "gps_location", "triangulated_location", "tower_location"];
   const location = () => {
-    for (const key of ["best_location", "gps_location", "triangulated_location", "tower_location"]) {
+    for (const key of LOCATION_KEYS) {
       const value = device[key] as Record<string, unknown> | undefined;
       const name = value?.["name"];
       if (typeof name === "string" && name.length) return name;
     }
     return null;
   };
+  /**
+   * The first location source carrying real coordinates, in the same order of
+   * preference as the name above. 0,0 is what an unset reading looks like.
+   */
+  const position = () => {
+    for (const key of LOCATION_KEYS) {
+      const value = device[key] as Record<string, unknown> | undefined;
+      const lat = value?.["latitude"];
+      const lon = value?.["longitude"];
+      if (typeof lat !== "number" || typeof lon !== "number") continue;
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || (lat === 0 && lon === 0)) continue;
+      const when = value?.["when"];
+      return { lat, lon, when: typeof when === "string" && when.length ? when : null };
+    }
+    return null;
+  };
+  const pos = position();
 
   return {
     uid: String(device["uid"] ?? ""),
@@ -185,20 +212,27 @@ function toDeviceSummary(device: RawDevice): DeviceSummary {
     voltage: num("voltage"),
     temperature: num("temperature"),
     location: location(),
+    lat: pos?.lat ?? null,
+    lon: pos?.lon ?? null,
+    locationWhen: pos?.when ?? null,
     disabled: device["disabled"] === true,
     provisioned: str("provisioned"),
     fleetUids: Array.isArray(device["fleet_uids"]) ? (device["fleet_uids"] as string[]) : [],
   };
 }
 
-export async function listDevices(): Promise<DeviceSummary[]> {
+/**
+ * Every device in the project. Wrapped in `cache` so the device layout and the
+ * page beneath it share one request per render instead of making two.
+ */
+export const listDevices = cache(async (): Promise<DeviceSummary[]> => {
   const api = new NotehubJs.DeviceApi(client());
   const response = await call<DevicesResponse>("list devices", () =>
     api.getDevices(projectUid(), { pageSize: 500, pageNum: 1 }),
   );
   const devices = response?.devices ?? [];
   return devices.map(toDeviceSummary).filter((d) => d.uid.length > 0);
-}
+});
 
 export type ResolvedDevice = {
   device: DeviceSummary;
@@ -206,18 +240,13 @@ export type ResolvedDevice = {
 };
 
 /**
- * Pick the device to show: an explicit request wins, then NOTEHUB_DEVICE_UID,
- * then the project's first device. The full list comes back too so the UI can
- * offer a picker when the project holds more than one.
+ * Look up one device by UID. The full list comes back too so the UI can offer
+ * a switcher. Null when the project has no device with that UID.
  */
-export async function resolveDevice(requestedUid?: string): Promise<ResolvedDevice | null> {
-  const pinned = process.env.NOTEHUB_DEVICE_UID?.trim();
+export async function findDevice(uid: string): Promise<ResolvedDevice | null> {
   const all = await listDevices();
-  if (!all.length) return null;
-
-  const wanted = requestedUid?.trim() || pinned;
-  const device = (wanted && all.find((d) => d.uid === wanted)) || all[0];
-  return { device, all };
+  const device = all.find((d) => d.uid === uid);
+  return device ? { device, all } : null;
 }
 
 export async function fetchDevice(deviceUid: string): Promise<DeviceSummary | null> {
@@ -599,12 +628,21 @@ export async function fetchLatestEvents(deviceUid: string): Promise<LatestEvent[
 
 /* ---------------------------------------------------- environment variables */
 
+/**
+ * The settings the device actually runs on.
+ *
+ * Notehub layers variables: project, then fleet, then the device's own, with
+ * the more specific winning. `environment_variables` holds only the device's
+ * own layer, so a threshold set once for the whole project is invisible there
+ * — reading it would report "no threshold" for a device that is alerting on
+ * one. `environment_variables_effective` is the merged result the device sees.
+ */
 export async function getEnvironmentVariables(deviceUid: string): Promise<Record<string, string>> {
   const api = new NotehubJs.DeviceApi(client());
   const response = await call<EnvVarsResponse>("get environment variables", () =>
     api.getDeviceEnvironmentVariables(projectUid(), deviceUid),
   );
-  const vars = response?.environment_variables ?? {};
+  const vars = response?.environment_variables_effective ?? response?.environment_variables ?? {};
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(vars)) out[key] = String(value);
   return out;

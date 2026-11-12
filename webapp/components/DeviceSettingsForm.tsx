@@ -22,6 +22,14 @@ type Vars = Record<string, string>;
 const SUGGESTED_MIN_C = 0;
 const SUGGESTED_MAX_C = 30;
 
+/** Settings as the device holds them: thresholds in °C, null where that side is off. */
+export type StoredSettings = {
+  name: string;
+  minC: number | null;
+  maxC: number | null;
+  recheck: string;
+};
+
 export type InitialSettings = {
   name: string;
   /** Threshold in the display unit, or "" while that direction is off. */
@@ -57,10 +65,17 @@ export function DeviceSettingsForm({
   deviceUid,
   unit,
   initial,
+  onSaved,
 }: {
   deviceUid: string;
   unit: Unit;
   initial: InitialSettings;
+  /**
+   * Hands what Notehub now holds back up, in Celsius, so a later change of
+   * unit re-seeds the form from the saved values rather than the ones the page
+   * loaded with.
+   */
+  onSaved?: (stored: StoredSettings) => void;
 }) {
   const [name, setName] = useState(initial.name);
   const [minEnabled, setMinEnabled] = useState(initial.minEnabled);
@@ -236,6 +251,12 @@ export function DeviceSettingsForm({
       setRecheck(next.recheck);
       setSaved(next);
       setNotice("Settings saved.");
+      onSaved?.({
+        name: next.name,
+        minC: next.minEnabled ? Number(stored[TEMP_MIN_VAR] ?? nextMin) : null,
+        maxC: next.maxEnabled ? Number(stored[TEMP_MAX_VAR] ?? nextMax) : null,
+        recheck: next.recheck,
+      });
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Could not save.");
     } finally {

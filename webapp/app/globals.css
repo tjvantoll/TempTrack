@@ -487,3 +487,72 @@ body {
   stroke-width: 1.4;
   paint-order: stroke;
 }
+
+/* ------------------------------------------------------------ fleet markers */
+
+/* One device on the fleet map: a dot with its name beside it. The wrapper is a
+   zero-size divIcon anchored on the dot, so the label never shifts the point. */
+.fleet-marker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.fleet-marker-dot {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: var(--secondary);
+  border: 3px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+
+.fleet-marker-label {
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 0 0 1px var(--border), 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+/* Red is spent only on the alert path: a device that alerted recently. */
+.fleet-marker-alert .fleet-marker-dot {
+  background: var(--accent);
+}
+
+.fleet-marker-alert .fleet-marker-label {
+  color: var(--alert-ink);
+}
+
+/* Where a current journey on the fleet map set out from. */
+.track-map .journey-start {
+  stroke: var(--secondary);
+  fill: var(--surface);
+  fill-opacity: 1;
+}
+
+/* Hover tooltips, themed to match the popups. Leaflet draws the pointer with a
+   bordered ::before, so its color has to follow the surface too. */
+.track-map .leaflet-tooltip {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 9px;
+  font-size: 12px;
+  line-height: 1.45;
+  box-shadow: 0 4px 14px rgb(31 49 64 / 0.16);
+}
+
+.track-map .leaflet-tooltip-top::before {
+  border-top-color: var(--surface);
+}
+
+.track-map .journey-start {
+  cursor: default;
+}

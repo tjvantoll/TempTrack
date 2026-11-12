@@ -14,12 +14,6 @@ export type Unit = (typeof UNITS)[number];
 
 export const DEFAULT_UNIT: Unit = "f";
 
-export function resolveUnit(raw: string | string[] | undefined): Unit {
-  const value = Array.isArray(raw) ? raw[0] : raw;
-  const lowered = value?.trim().toLowerCase();
-  return UNITS.includes(lowered as Unit) ? (lowered as Unit) : DEFAULT_UNIT;
-}
-
 export function unitLabel(unit: Unit): string {
   return unit === "f" ? "°F" : "°C";
 }

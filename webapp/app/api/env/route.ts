@@ -3,7 +3,6 @@ import {
   NotehubApiError,
   NotehubConfigError,
   getEnvironmentVariables,
-  resolveDevice,
   setEnvironmentVariables,
 } from "@/lib/notehub";
 import {
@@ -31,17 +30,17 @@ function fail(error: unknown) {
   return NextResponse.json({ error: message }, { status: 500 });
 }
 
-async function deviceUidFor(requested: string | null): Promise<string | null> {
-  if (requested) return requested;
-  const resolved = await resolveDevice();
-  return resolved?.device.uid ?? null;
+/** Every request names its device — there is no implicit default device. */
+function deviceUidFor(requested: string | null | undefined): string | null {
+  const uid = requested?.trim();
+  return uid ? uid : null;
 }
 
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
-    const deviceUid = await deviceUidFor(url.searchParams.get("device"));
-    if (!deviceUid) return NextResponse.json({ error: "No device available." }, { status: 404 });
+    const deviceUid = deviceUidFor(url.searchParams.get("device"));
+    if (!deviceUid) return NextResponse.json({ error: "Specify a `device`." }, { status: 400 });
     return NextResponse.json({ variables: await getEnvironmentVariables(deviceUid) });
   } catch (error) {
     return fail(error);
@@ -79,8 +78,8 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "No settings supplied." }, { status: 400 });
     }
 
-    const deviceUid = await deviceUidFor(payload.device ?? null);
-    if (!deviceUid) return NextResponse.json({ error: "No device available." }, { status: 404 });
+    const deviceUid = deviceUidFor(payload.device);
+    if (!deviceUid) return NextResponse.json({ error: "Specify a `device`." }, { status: 400 });
 
     /**
      * The threshold pair has to be checked against what the device will

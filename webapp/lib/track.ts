@@ -18,7 +18,10 @@ export function trail(points: TrackPoint[]): LatLng[] {
  * maximum level available — which puts a stationary tracker at street level
  * with no context around it.
  */
-export function trackBounds(points: TrackPoint[], padDegrees = 0.0025): Bounds | null {
+export function trackBounds(
+  points: Pick<TrackPoint, "lat" | "lon">[],
+  padDegrees = 0.0025,
+): Bounds | null {
   if (!points.length) return null;
 
   let south = points[0].lat;

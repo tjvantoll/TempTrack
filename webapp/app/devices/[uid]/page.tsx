@@ -1,39 +1,30 @@
 import { AlertsTimeline } from "@/components/AlertsTimeline";
 import { Card } from "@/components/Card";
-import { DeviceSwitcher } from "@/components/DeviceSwitcher";
-import { ErrorNotice, SetupNotice } from "@/components/ErrorNotice";
+import { ErrorNotice } from "@/components/ErrorNotice";
 import { LocationPanel } from "@/components/LocationPanel";
 import { SessionTable } from "@/components/SessionTable";
 import { StatTile } from "@/components/StatTile";
+import { TemperatureTile } from "@/components/Temperature";
 import { TimeRangePicker } from "@/components/TimeRangePicker";
-import { UnitToggle } from "@/components/UnitToggle";
 import { SessionCharts } from "@/components/charts/SessionCharts";
 import { TempChart } from "@/components/charts/TempChart";
 import { SESSION_CHART_KEYS, sessionFieldDef } from "@/lib/fields";
-import {
-  TEMP_MAX_DEFAULT,
-  TEMP_MAX_DISABLED,
-  TEMP_MAX_VAR,
-  TEMP_MIN_DEFAULT,
-  TEMP_MIN_DISABLED,
-  TEMP_MIN_VAR,
-} from "@/lib/env-vars";
+import { activeRange } from "@/lib/env-vars";
 import {
   NotehubApiError,
-  NotehubConfigError,
   fetchAlerts,
   fetchLatestEvents,
   fetchSessionSamples,
   fetchTrackPoints,
+  findDevice,
   getEnvironmentVariables,
-  resolveDevice,
   trackTemperatureSeries,
   type AlertSample,
   type SessionSample,
   type TrackPoint,
 } from "@/lib/notehub";
+import { decodeDeviceParam } from "@/lib/device-url";
 import { latestValue, type Point } from "@/lib/series";
-import { fromCelsius, resolveUnit, unitLabel } from "@/lib/temperature";
 import { formatRelative, resolveRange } from "@/lib/time-ranges";
 import { formatDistance, pathLengthMeters } from "@/lib/track";
 
@@ -59,64 +50,18 @@ function sessionPoints(samples: SessionSample[]): Point[] {
   });
 }
 
-/**
- * A configured threshold, or null where that direction is switched off. The
- * firmware stores "off" as an unreachable temperature rather than a flag, so
- * the sentinel has to be filtered out before anything tries to draw it.
- */
-function activeThreshold(
-  variables: Record<string, string>,
-  name: string,
-  fallback: number,
-  sentinel: number,
-): number | null {
-  const raw = variables[name];
-  const value = raw === undefined ? fallback : Number(raw);
-  if (!Number.isFinite(value) || value === sentinel) return null;
-  return value;
-}
+export default async function DashboardPage({
+  params,
+  searchParams,
+}: PageProps<"/devices/[uid]">) {
+  const [{ uid }, query] = await Promise.all([params, searchParams]);
+  const range = resolveRange(query.range);
 
-export default async function DashboardPage({ searchParams }: PageProps<"/">) {
-  const params = await searchParams;
-  const range = resolveRange(params.range);
-  const unit = resolveUnit(params.unit);
-  const requestedDevice = Array.isArray(params.device)
-    ? params.device[0]
-    : params.device;
-
-  let resolved: Awaited<ReturnType<typeof resolveDevice>> = null;
-  let failure: Error | null = null;
-  try {
-    resolved = await resolveDevice(requestedDevice);
-  } catch (error) {
-    if (
-      error instanceof NotehubConfigError ||
-      error instanceof NotehubApiError
-    ) {
-      failure = error;
-    } else {
-      throw error;
-    }
-  }
-
-  if (failure instanceof NotehubConfigError)
-    return <SetupNotice message={failure.message} />;
-  if (failure)
-    return (
-      <ErrorNotice title="Could not reach Notehub" message={failure.message} />
-    );
-
-  if (!resolved) {
-    return (
-      <ErrorNotice
-        title="No devices in this project"
-        message="Notehub returned no devices for this project UID."
-        hint="Check that NOTEHUB_PROJECT_UID points at the project your TempTrack device reports into."
-      />
-    );
-  }
-
-  const { device, all } = resolved;
+  // The layout has already resolved this device (and rendered any error or
+  // not-found), and `listDevices` is request-cached, so this costs no request.
+  const resolved = await findDevice(decodeDeviceParam(uid)).catch(() => null);
+  if (!resolved) return null;
+  const { device } = resolved;
 
   // One request per notefile covers the wider of the two windows; each section
   // slices what it needs.
@@ -167,18 +112,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
 
   /* ------------------------------------------------------- current state */
 
-  const minC = activeThreshold(
-    variables,
-    TEMP_MIN_VAR,
-    TEMP_MIN_DEFAULT,
-    TEMP_MIN_DISABLED,
-  );
-  const maxC = activeThreshold(
-    variables,
-    TEMP_MAX_VAR,
-    TEMP_MAX_DEFAULT,
-    TEMP_MAX_DISABLED,
-  );
+  const { minC, maxC } = activeRange(variables);
 
   const allSessionPoints = sessionPoints(sessions);
   const currentVoltage = latestValue(allSessionPoints, "voltage");
@@ -218,16 +152,6 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
 
   return (
     <div className="space-y-10">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-ink">
-          {device.serialNumber || device.bestId || "TempTrack device"}
-        </h1>
-        <div className="flex flex-wrap items-center gap-3">
-          <UnitToggle value={unit} />
-          <DeviceSwitcher devices={all} selected={device.uid} />
-        </div>
-      </div>
-
       {/* ------------------------------------------------- At a glance --- */}
       <section aria-labelledby="glance-heading" className="space-y-4">
         <h2 id="glance-heading" className="sr-only">
@@ -235,13 +159,9 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
         </h2>
 
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-3">
-          <StatTile
+          <TemperatureTile
             label="Temperature"
-            value={
-              temperatureC === null ? null : fromCelsius(temperatureC, unit)
-            }
-            unit={unitLabel(unit)}
-            precision={1}
+            celsius={temperatureC}
             note={
               latestTrack
                 ? `At the latest tracking event · ${formatRelative(latestTrack.t)}`
@@ -295,7 +215,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
           <TimeRangePicker value={range.key} />
         </div>
 
-        <LocationPanel points={trackPoints} unit={unit} />
+        <LocationPanel points={trackPoints} />
       </section>
 
       {/* ------------------------------------------------- Temperature --- */}
@@ -311,7 +231,6 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
           <AlertsTimeline
             alerts={windowAlerts}
             latest={latestAlert}
-            unit={unit}
             rangeLabel={range.label}
           />
         </Card>
@@ -328,7 +247,6 @@ export default async function DashboardPage({ searchParams }: PageProps<"/">) {
           <TempChart
             points={tempPoints}
             rangeKey={range.key}
-            unit={unit}
             minC={minC}
             maxC={maxC}
           />

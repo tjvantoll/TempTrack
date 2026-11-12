@@ -2,7 +2,8 @@
 
 import { useMemo } from "react";
 import { TimeSeriesChart, type Band, type Rule } from "@/components/charts/TimeSeriesChart";
-import { fromCelsius, unitLabel, type Unit } from "@/lib/temperature";
+import { fromCelsius, unitLabel } from "@/lib/temperature";
+import { useUnit } from "@/lib/unit-preference";
 import type { Point } from "@/lib/series";
 import type { RangeKey } from "@/lib/time-ranges";
 
@@ -21,17 +22,16 @@ import type { RangeKey } from "@/lib/time-ranges";
 export function TempChart({
   points,
   rangeKey,
-  unit,
   minC,
   maxC,
 }: {
   points: Point[];
   rangeKey: RangeKey;
-  unit: Unit;
   /** Active thresholds in °C, or null where alerting is off in that direction. */
   minC: number | null;
   maxC: number | null;
 }) {
+  const unit = useUnit();
   // Everything upstream is Celsius; convert once, here, so the axis, the
   // tooltip and the threshold geometry all agree.
   const converted = useMemo<Point[]>(

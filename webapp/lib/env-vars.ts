@@ -180,3 +180,29 @@ export function validateThresholdPair(
   }
   return null;
 }
+
+/**
+ * A configured threshold, or null where that direction is switched off. The
+ * firmware stores "off" as an unreachable temperature rather than a flag, so
+ * the sentinel has to be filtered out before anything tries to draw or compare
+ * against it.
+ */
+function activeThreshold(
+  variables: Record<string, string>,
+  name: string,
+  fallback: number,
+  sentinel: number,
+): number | null {
+  const raw = variables[name];
+  const value = raw === undefined ? fallback : Number(raw);
+  if (!Number.isFinite(value) || value === sentinel) return null;
+  return value;
+}
+
+/** The alert band the device is running on, in °C; null on a side that is off. */
+export function activeRange(variables: Record<string, string>): { minC: number | null; maxC: number | null } {
+  return {
+    minC: activeThreshold(variables, TEMP_MIN_VAR, TEMP_MIN_DEFAULT, TEMP_MIN_DISABLED),
+    maxC: activeThreshold(variables, TEMP_MAX_VAR, TEMP_MAX_DEFAULT, TEMP_MAX_DISABLED),
+  };
+}

@@ -1,4 +1,7 @@
+"use client";
+
 import { formatTemp, type Unit } from "@/lib/temperature";
+import { useUnit } from "@/lib/unit-preference";
 import { formatRelative } from "@/lib/time-ranges";
 import { TEMP_MAX_DISABLED, TEMP_MIN_DISABLED } from "@/lib/env-vars";
 import type { AlertSample } from "@/lib/notehub";
@@ -36,16 +39,15 @@ function bandLabel(alert: AlertSample, unit: Unit): string {
 export function AlertsTimeline({
   alerts,
   latest,
-  unit,
   rangeLabel,
 }: {
   /** Alerts inside the selected window, oldest first. */
   alerts: AlertSample[];
   /** The most recent alert on record, which may predate the window. */
   latest: AlertSample | null;
-  unit: Unit;
   rangeLabel: string;
 }) {
+  const unit = useUnit();
   const newestFirst = [...alerts].reverse();
 
   return (
