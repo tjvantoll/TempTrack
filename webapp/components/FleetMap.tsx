@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleMarker, MapContainer, Marker, Polyline, Popup, TileLayer, Tooltip, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { DirectionArrows } from "@/components/DirectionArrows";
 import { deviceHref } from "@/lib/device-url";
 import type { FleetDevice, FleetMapProps } from "@/lib/fleet";
 import { formatRelative } from "@/lib/time-ranges";
@@ -73,23 +74,29 @@ function Viewport({ devices }: { devices: FleetDevice[] }) {
 }
 
 /**
- * A device's trip so far: the path, plus a hollow dot where it set out. The
- * device's own marker covers the other end. Styled through the same classes as
- * the device dashboard's track so a journey looks the same on both maps.
+ * A device's trip so far: the path with direction arrows, plus a hollow dot
+ * where it set out. The device's own marker covers the other end. Styled
+ * through the same classes and arrows as the device dashboard's track so a
+ * journey looks the same on both maps.
  */
 function JourneyLine({ device }: { device: FleetDevice }) {
   const journey = device.journey;
+  const arrowPoints = useMemo(() => (journey?.path ?? []).map(([lat, lon]) => ({ lat, lon })), [journey]);
   if (!journey || !journey.path.length) return null;
 
   return (
     <>
       {journey.path.length > 1 && (
-        <Polyline
-          positions={journey.path}
-          className="track-line"
-          pathOptions={{ weight: 3 }}
-          interactive={false}
-        />
+        <>
+          <Polyline
+            positions={journey.path}
+            className="track-line"
+            pathOptions={{ weight: 3 }}
+            interactive={false}
+          />
+          {/* Under the device markers, which share their pane, so arrows never cover a name. */}
+          <DirectionArrows points={arrowPoints} zIndexOffset={-1000} />
+        </>
       )}
       {/* Interactive only so it can be hovered for its tooltip. */}
       <CircleMarker
