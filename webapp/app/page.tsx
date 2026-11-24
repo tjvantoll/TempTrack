@@ -11,17 +11,28 @@ import { CURRENT_JOURNEY_MS, type FleetDevice, type FleetJourney } from "@/lib/f
 import {
   NotehubApiError,
   NotehubConfigError,
-  fetchLatestEvents,
-  fetchTrackPoints,
+  fetchFleetAlerts,
+  fetchFleetTrackPoints,
   getEnvironmentVariables,
   listDevices,
+  type AlertSample,
   type DeviceSummary,
-  type LatestEvent,
+  type TrackPoint,
 } from "@/lib/notehub";
 import { formatRelative } from "@/lib/time-ranges";
 import { formatDistance, pathLengthMeters } from "@/lib/track";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * How far back the fleet view reads `_track.qo`. A parked Notecard still
+ * writes a heartbeat point every 24 hours, so this always reaches a device's
+ * newest point; it also covers any journey a device could still be on.
+ */
+const TRACK_WINDOW_SEC = 25 * 3600;
+
+/** How far back the fleet view looks for a device's latest alert. */
+const ALERT_WINDOW_SEC = 30 * 24 * 3600;
 
 function num(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -40,23 +51,17 @@ function parseIso(value: string | null): number | null {
  * recently (see CURRENT_JOURNEY_MS). A stationary device's heartbeat notes
  * carry no journey ID, so they correctly end any earlier trip.
  */
-async function currentJourney(deviceUid: string, track: LatestEvent | undefined): Promise<FleetJourney | null> {
-  const id = num(track?.body["journey"]);
-  if (id === null || !track?.t || Date.now() - track.t > CURRENT_JOURNEY_MS) return null;
+function currentJourney(points: TrackPoint[]): FleetJourney | null {
+  const newest = points[points.length - 1];
+  const id = num(newest?.fields["journey"]);
+  if (id === null || Date.now() - newest.t > CURRENT_JOURNEY_MS) return null;
 
-  // The journey ID is its start time, so the window opens there (with a minute
-  // of slack for clock skew) and runs to now.
-  const nowSec = Math.ceil(Date.now() / 1000);
-  const points = (await fetchTrackPoints({ deviceUid, startSec: id - 60, endSec: nowSec })).filter(
-    (point) => point.fields["journey"] === id,
-  );
-  if (!points.length) return null;
-
+  const journey = points.filter((point) => point.fields["journey"] === id);
   return {
     id,
     startedMs: id * 1000,
-    path: points.map((point) => [point.lat, point.lon]),
-    distanceM: pathLengthMeters(points),
+    path: journey.map((point) => [point.lat, point.lon]),
+    distanceM: pathLengthMeters(journey),
   };
 }
 
@@ -81,14 +86,40 @@ function alertState(
   return outside ? "active" : "cleared";
 }
 
+/** What the fleet-wide queries returned; null when they failed. */
+type FleetData = {
+  tracks: Map<string, TrackPoint[]>;
+  alerts: Map<string, AlertSample[]>;
+} | null;
+
 /**
- * Fill in one device's row. Its latest events give the temperature and the
- * newest alert in a single request; the location comes from the device record.
+ * One request per notefile for the whole fleet, not one per device: Notehub's
+ * API rate limit is per billing account and small (7 requests a minute on the
+ * default plan), so per-device requests fail once a fleet has a few devices.
+ * Null when either request fails, so every row reads "Unavailable", not "none".
+ */
+async function loadFleetData(): Promise<FleetData> {
+  const nowSec = Math.ceil(Date.now() / 1000);
+  try {
+    const [tracks, alerts] = await Promise.all([
+      fetchFleetTrackPoints({ startSec: nowSec - TRACK_WINDOW_SEC, endSec: nowSec }),
+      fetchFleetAlerts({ startSec: nowSec - ALERT_WINDOW_SEC, endSec: nowSec }),
+    ]);
+    return { tracks, alerts };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fill in one device's row from the fleet-wide queries; the location comes
+ * from the device record. Only a device with an alert costs a request of its
+ * own, for the settings that decide whether the alert still stands.
  *
  * The temperature deliberately comes only from `_track.qo` — the device
  * record's `temperature` is the Notecard's own reading, a different sensor.
  */
-async function fleetDevice(device: DeviceSummary): Promise<FleetDevice> {
+async function fleetDevice(device: DeviceSummary, data: FleetData): Promise<FleetDevice> {
   const base: FleetDevice = {
     uid: device.uid,
     name: deviceName(device),
@@ -105,41 +136,26 @@ async function fleetDevice(device: DeviceSummary): Promise<FleetDevice> {
     detailsUnavailable: false,
   };
 
-  let events;
-  let variables: Record<string, string> | null;
-  try {
-    [events, variables] = await Promise.all([
-      fetchLatestEvents(device.uid),
-      // Only needed to judge an alert, which has a fallback without it.
-      getEnvironmentVariables(device.uid).catch(() => null),
-    ]);
-  } catch {
-    // One device failing should not blank the whole fleet.
-    return { ...base, detailsUnavailable: true };
-  }
+  // The fleet-wide queries failing should not blank the whole fleet.
+  if (!data) return { ...base, detailsUnavailable: true };
 
-  const track = events.find((e) => e.file === "_track.qo");
-  const alert = events.find((e) => e.file === "alert.qo");
+  const points = data.tracks.get(device.uid) ?? [];
+  const track = points[points.length - 1];
+  const alerts = data.alerts.get(device.uid) ?? [];
+  const alert = alerts[alerts.length - 1];
 
-  const temperatureC = num(track?.body["temperature"]);
+  const temperatureC = num(track?.fields["temperature"]);
   let latestAlert: FleetDevice["latestAlert"] = null;
   let state: FleetDevice["alertState"] = null;
-  const alertTemp = num(alert?.body["temp"]);
-  if (alert?.t && alertTemp !== null) {
-    const minC = num(alert.body["temp_min"]);
-    const maxC = num(alert.body["temp_max"]);
-    latestAlert = {
-      t: alert.t,
-      tempC: alertTemp,
-      direction:
-        maxC !== null && alertTemp > maxC ? "hot" : minC !== null && alertTemp < minC ? "cold" : "unknown",
-    };
-    const reading = temperatureC !== null && track?.t ? { t: track.t, tempC: temperatureC } : null;
-    state = alertState({ ...latestAlert, minC, maxC }, reading, variables);
+  if (alert) {
+    latestAlert = { t: alert.t, tempC: alert.tempC, direction: alert.direction };
+    // Only needed to judge the alert, which has a fallback without it.
+    const variables = await getEnvironmentVariables(device.uid).catch(() => null);
+    const reading = temperatureC !== null && track ? { t: track.t, tempC: temperatureC } : null;
+    state = alertState({ ...latestAlert, minC: alert.minC, maxC: alert.maxC }, reading, variables);
   }
 
-  // The trip is a nice-to-have on top of the row; if it fails, show the device without it.
-  const journey = await currentJourney(device.uid, track).catch(() => null);
+  const journey = currentJourney(points);
   const lastFix = journey?.path[journey.path.length - 1];
 
   return {
@@ -183,7 +199,8 @@ export default async function FleetPage({ searchParams }: PageProps<"/">) {
     );
   }
 
-  const devices = (await Promise.all(summaries.map(fleetDevice))).sort((a, b) =>
+  const data = await loadFleetData();
+  const devices = (await Promise.all(summaries.map((device) => fleetDevice(device, data)))).sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { numeric: true }),
   );
   const alerting = devices.filter((d) => d.alertState === "active").length;

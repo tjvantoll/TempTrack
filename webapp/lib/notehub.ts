@@ -260,8 +260,12 @@ export async function fetchDevice(deviceUid: string): Promise<DeviceSummary | nu
 
 type RawEvent = Record<string, unknown>;
 
+/**
+ * Events from one notefile in a window, oldest first. Without a `deviceUid` it
+ * covers every device in the project in the same request.
+ */
 async function fetchAllEvents(opts: {
-  deviceUid: string;
+  deviceUid?: string;
   files: string;
   startSec: number;
   endSec: number;
@@ -275,7 +279,7 @@ async function fetchAllEvents(opts: {
       api.getEvents(projectUid(), {
         pageSize: MAX_PAGE_SIZE,
         pageNum,
-        deviceUID: [opts.deviceUid],
+        ...(opts.deviceUid ? { deviceUID: [opts.deviceUid] } : {}),
         files: opts.files,
         startDate: opts.startSec,
         endDate: opts.endSec,
@@ -341,38 +345,80 @@ export async function fetchAlerts(opts: {
   endSec: number;
 }): Promise<AlertSample[]> {
   const events = await fetchAllEvents({ ...opts, files: ALERT_NOTEFILE });
-  const samples: AlertSample[] = [];
+  return toSortedSamples(events, toAlertSample);
+}
 
+/**
+ * Every device's alerts in one request, keyed by DeviceUID. Devices with none
+ * in the window are absent from the map.
+ */
+export async function fetchFleetAlerts(opts: {
+  startSec: number;
+  endSec: number;
+}): Promise<Map<string, AlertSample[]>> {
+  const events = await fetchAllEvents({ ...opts, files: ALERT_NOTEFILE });
+  return groupByDevice(events, toAlertSample);
+}
+
+function toAlertSample(event: RawEvent): AlertSample | null {
+  const t = eventTimeMs(event);
+  if (t === null) return null;
+
+  const body = (event["body"] ?? {}) as Record<string, unknown>;
+  const tempC = num(body["temp"]);
+  // Without a temperature there is no alert to show. The note template
+  // declares all three fields, so this only happens on a malformed note.
+  if (tempC === null) return null;
+
+  const minC = num(body["temp_min"]);
+  const maxC = num(body["temp_max"]);
+  const received = event["received"];
+
+  let direction: AlertSample["direction"] = "unknown";
+  if (maxC !== null && tempC > maxC) direction = "hot";
+  else if (minC !== null && tempC < minC) direction = "cold";
+
+  return {
+    t,
+    receivedMs: typeof received === "number" && received > 0 ? received * 1000 : null,
+    tempC,
+    minC,
+    maxC,
+    direction,
+  };
+}
+
+/** Convert events, drop the ones that don't convert, and sort oldest first. */
+function toSortedSamples<T extends { t: number }>(events: RawEvent[], convert: (event: RawEvent) => T | null): T[] {
+  const out: T[] = [];
   for (const event of events) {
-    const t = eventTimeMs(event);
-    if (t === null) continue;
-
-    const body = (event["body"] ?? {}) as Record<string, unknown>;
-    const tempC = num(body["temp"]);
-    // Without a temperature there is no alert to show. The note template
-    // declares all three fields, so this only happens on a malformed note.
-    if (tempC === null) continue;
-
-    const minC = num(body["temp_min"]);
-    const maxC = num(body["temp_max"]);
-    const received = event["received"];
-
-    let direction: AlertSample["direction"] = "unknown";
-    if (maxC !== null && tempC > maxC) direction = "hot";
-    else if (minC !== null && tempC < minC) direction = "cold";
-
-    samples.push({
-      t,
-      receivedMs: typeof received === "number" && received > 0 ? received * 1000 : null,
-      tempC,
-      minC,
-      maxC,
-      direction,
-    });
+    const sample = convert(event);
+    if (sample) out.push(sample);
   }
+  return out.sort((a, b) => a.t - b.t);
+}
 
-  samples.sort((a, b) => a.t - b.t);
-  return samples;
+/**
+ * Split a project-wide result by device. This is how the fleet view stays
+ * within Notehub's API rate limit, which is per billing account and small (7
+ * requests a minute on the default plan): one request for every device instead
+ * of one per device.
+ */
+function groupByDevice<T extends { t: number }>(
+  events: RawEvent[],
+  convert: (event: RawEvent) => T | null,
+): Map<string, T[]> {
+  const byDevice = new Map<string, RawEvent[]>();
+  for (const event of events) {
+    const uid = event["device"];
+    if (typeof uid !== "string" || !uid) continue;
+    const list = byDevice.get(uid);
+    if (list) list.push(event);
+    else byDevice.set(uid, [event]);
+  }
+  const out = new Map<string, T[]>();
+  for (const [uid, list] of byDevice) out.set(uid, toSortedSamples(list, convert));
+  return out;
 }
 
 /* -------------------------------------------------------------- _track.qo */
@@ -411,43 +457,52 @@ export async function fetchTrackPoints(opts: {
   endSec: number;
 }): Promise<TrackPoint[]> {
   const events = await fetchAllEvents({ ...opts, files: TRACK_NOTEFILE });
-  const points: TrackPoint[] = [];
+  return toSortedSamples(events, toTrackPoint);
+}
 
-  for (const event of events) {
-    const t = eventTimeMs(event);
-    if (t === null) continue;
+/**
+ * Every device's track points in one request, keyed by DeviceUID. Devices
+ * with none in the window are absent from the map.
+ */
+export async function fetchFleetTrackPoints(opts: {
+  startSec: number;
+  endSec: number;
+}): Promise<Map<string, TrackPoint[]>> {
+  const events = await fetchAllEvents({ ...opts, files: TRACK_NOTEFILE });
+  return groupByDevice(events, toTrackPoint);
+}
 
-    const body = (event["body"] ?? {}) as Record<string, unknown>;
-    // The note body is the authority, but an event that omits its own
-    // coordinates can still be placed from the event-level location Notehub
-    // resolves.
-    const lat = num(body["lat"]) ?? num(event["best_lat"]);
-    const lon = num(body["lon"]) ?? num(event["best_lon"]);
-    if (lat === null || lon === null) continue;
-    // 0,0 is in the Gulf of Guinea and is what an uninitialised reading looks like.
-    if (lat === 0 && lon === 0) continue;
+function toTrackPoint(event: RawEvent): TrackPoint | null {
+  const t = eventTimeMs(event);
+  if (t === null) return null;
 
-    const fields: Record<string, string | number | boolean> = {};
-    const take = (key: string, value: unknown) => {
-      if (value === null || value === undefined) return;
-      if (typeof value === "number" && Number.isNaN(value)) return;
-      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-        fields[key] = value;
-      }
-    };
+  const body = (event["body"] ?? {}) as Record<string, unknown>;
+  // The note body is the authority, but an event that omits its own
+  // coordinates can still be placed from the event-level location Notehub
+  // resolves.
+  const lat = num(body["lat"]) ?? num(event["best_lat"]);
+  const lon = num(body["lon"]) ?? num(event["best_lon"]);
+  if (lat === null || lon === null) return null;
+  // 0,0 is in the Gulf of Guinea and is what an uninitialised reading looks like.
+  if (lat === 0 && lon === 0) return null;
 
-    for (const key of EVENT_LEVEL_TRACK_KEYS) take(key, event[key]);
-    for (const [key, value] of Object.entries(body)) take(key, value);
-    // Coordinates live on the point itself; repeating them as detail rows just
-    // prints the same numbers twice.
-    delete fields["lat"];
-    delete fields["lon"];
+  const fields: Record<string, string | number | boolean> = {};
+  const take = (key: string, value: unknown) => {
+    if (value === null || value === undefined) return;
+    if (typeof value === "number" && Number.isNaN(value)) return;
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      fields[key] = value;
+    }
+  };
 
-    points.push({ t, lat, lon, fields });
-  }
+  for (const key of EVENT_LEVEL_TRACK_KEYS) take(key, event[key]);
+  for (const [key, value] of Object.entries(body)) take(key, value);
+  // Coordinates live on the point itself; repeating them as detail rows just
+  // prints the same numbers twice.
+  delete fields["lat"];
+  delete fields["lon"];
 
-  points.sort((a, b) => a.t - b.t);
-  return points;
+  return { t, lat, lon, fields };
 }
 
 /** The temperature carried by each tracking event, as a chartable series. */
