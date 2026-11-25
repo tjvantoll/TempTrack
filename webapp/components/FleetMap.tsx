@@ -227,6 +227,7 @@ export default function FleetMap({ devices }: FleetMapProps) {
               </dl>
               <Link
                 href={deviceHref(device.uid)}
+                prefetch={false}
                 className="mt-3 inline-block text-sm font-medium text-primary hover:text-[var(--primary-hover)]"
               >
                 Open dashboard →

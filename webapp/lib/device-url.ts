@@ -1,10 +1,13 @@
 /**
- * Device UIDs look like `dev:860000000000000`. Colons are legal in a path
- * segment, so they are left readable rather than escaped to `%3A`; anything
- * else unusual is still encoded.
+ * Device UIDs look like `dev:860000000000000`. The colons are escaped to `%3A`
+ * even though they are legal in a path segment: the server always names the
+ * route param in its escaped form, and with readable colons in the link Next's
+ * prefetcher never matched its own response and refetched it in a tight loop —
+ * each round a Notehub request, which drained the API rate limit for as long
+ * as the fleet page stayed open.
  */
 export function deviceHref(uid: string, page: "dashboard" | "settings" = "dashboard", query?: string) {
-  const segment = encodeURIComponent(uid).replace(/%3A/gi, ":");
+  const segment = encodeURIComponent(uid);
   const path = page === "settings" ? `/devices/${segment}/settings` : `/devices/${segment}`;
   return query ? `${path}?${query}` : path;
 }

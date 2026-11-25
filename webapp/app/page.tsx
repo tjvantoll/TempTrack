@@ -235,6 +235,9 @@ export default async function FleetPage({ searchParams }: PageProps<"/">) {
               <li key={device.uid}>
                 <Link
                   href={deviceHref(device.uid)}
+                  // Prefetching renders the device layout, which costs a
+                  // Notehub request per visible row against a small rate limit.
+                  prefetch={false}
                   className="grid gap-x-6 gap-y-2 px-5 py-4 transition-colors hover:bg-surface-alt sm:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))] sm:items-center"
                 >
                   <div className="min-w-0">
