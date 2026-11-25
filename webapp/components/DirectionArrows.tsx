@@ -4,10 +4,18 @@ import { useMemo, useState } from "react";
 import { Marker, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 
-/** Shortest segment, in screen pixels, that has room for an arrow. */
-const MIN_SEGMENT_PX = 40;
-/** Minimum gap between consecutive arrows, so clusters do not fill with them. */
-const MIN_ARROW_GAP_PX = 60;
+/** Distance between arrows along the line, in screen pixels. */
+const ARROW_SPACING_PX = 70;
+/** A line shorter than this on screen gets no arrow at all. */
+const MIN_LINE_PX = 24;
+/** How far behind and ahead of an arrow the line is sampled for its heading. */
+const HEADING_SPAN_PX = 12;
+/**
+ * Straight-line distance over the sampled span, as a share of the distance
+ * along the line. Below it the line is doubling back (a cluster of
+ * stop-and-go fixes), where any heading would be noise, so no arrow.
+ */
+const MIN_STRAIGHTNESS = 0.7;
 /** Ceiling on arrows drawn, as a backstop on a long track at high zoom. */
 const MAX_ARROWS = 60;
 
@@ -31,11 +39,12 @@ function arrowIcon(angle: number) {
  * same way on both.
  *
  * Placement is decided in screen space rather than in degrees, because that is
- * the only space where "is there room for an arrow here" has an answer: a
- * segment that is 200 m long deserves an arrow when zoomed into a street and
- * not when the whole month is on screen. So this recomputes on zoom, keeps
- * arrows off segments too short to hold one, and enforces a gap between
- * consecutive arrows so a cluster of stop-and-go events does not fill in solid.
+ * the only space where "is there room for an arrow here" has an answer. Arrows
+ * go at a fixed spacing along the whole line, not per segment: on the fleet
+ * map a five-minute segment is a few pixels long, so a per-segment rule never
+ * places one. Each arrow points along the line around it, and is skipped where
+ * the line folds back on itself so a stop-and-go cluster does not fill in.
+ * Spacing is measured from the start, so arrows stay put as a journey grows.
  *
  * Projection is taken at an explicit zoom rather than through the map's current
  * layer origin, which makes the whole calculation a pure function of the points
@@ -59,32 +68,59 @@ export function DirectionArrows({
   const arrows = useMemo(() => {
     if (points.length < 2) return [];
 
+    const screen = points.map((point) => map.project([point.lat, point.lon], zoom));
+    // Distance along the line to each point.
+    const along = [0];
+    for (let i = 1; i < screen.length; i += 1) {
+      along.push(along[i - 1] + screen[i].distanceTo(screen[i - 1]));
+    }
+    const total = along[along.length - 1];
+    if (total < MIN_LINE_PX) return [];
+
+    // The screen point `d` pixels along the line.
+    const at = (d: number): L.Point => {
+      let lo = 0;
+      let hi = along.length - 1;
+      while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (along[mid] <= d) lo = mid;
+        else hi = mid;
+      }
+      const span = along[hi] - along[lo];
+      const t = span > 0 ? (d - along[lo]) / span : 0;
+      return L.point(
+        screen[lo].x + (screen[hi].x - screen[lo].x) * t,
+        screen[lo].y + (screen[hi].y - screen[lo].y) * t,
+      );
+    };
+
+    // One arrow mid-line on a short line, otherwise one every ARROW_SPACING_PX.
+    const offsets: number[] = [];
+    if (total < ARROW_SPACING_PX) {
+      offsets.push(total / 2);
+    } else {
+      for (let d = ARROW_SPACING_PX / 2; d < total && offsets.length < MAX_ARROWS; d += ARROW_SPACING_PX) {
+        offsets.push(d);
+      }
+    }
+
     const out: { key: string; lat: number; lon: number; angle: number }[] = [];
-    let lastPlaced: L.Point | null = null;
-
-    for (let i = 1; i < points.length; i += 1) {
-      const from = map.project([points[i - 1].lat, points[i - 1].lon], zoom);
-      const to = map.project([points[i].lat, points[i].lon], zoom);
-
-      const dx = to.x - from.x;
-      const dy = to.y - from.y;
-      if (Math.hypot(dx, dy) < MIN_SEGMENT_PX) continue;
-
-      const mid = L.point((from.x + to.x) / 2, (from.y + to.y) / 2);
-      if (lastPlaced && mid.distanceTo(lastPlaced) < MIN_ARROW_GAP_PX) continue;
+    for (const d of offsets) {
+      const startD = Math.max(0, d - HEADING_SPAN_PX);
+      const endD = Math.min(total, d + HEADING_SPAN_PX);
+      const from = at(startD);
+      const to = at(endD);
+      if (from.distanceTo(to) < MIN_STRAIGHTNESS * (endD - startD)) continue;
 
       // Back to lat/lng through the same projection, so the arrow lands exactly
-      // on the straight line Leaflet actually drew rather than near it.
-      const at = map.unproject(mid, zoom);
+      // on the line Leaflet actually drew rather than near it.
+      const position = map.unproject(at(d), zoom);
       out.push({
-        key: `${points[i - 1].lat},${points[i - 1].lon}-${i}`,
-        lat: at.lat,
-        lon: at.lng,
-        angle: (Math.atan2(dy, dx) * 180) / Math.PI,
+        key: `${d}`,
+        lat: position.lat,
+        lon: position.lng,
+        angle: (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI,
       });
-
-      lastPlaced = mid;
-      if (out.length >= MAX_ARROWS) break;
     }
 
     return out;
